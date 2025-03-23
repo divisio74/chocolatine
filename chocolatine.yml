@@ -24,3 +24,26 @@ jobs:
             echo "Ce repository est un miroir, arrêt du workflow."
             exit 0
           fi
+
+  check_coding_style:
+    name: Vérification du style de code
+    runs-on: ubuntu-latest
+    container: ghcr.io/epitech/coding-style-checker:latest
+
+    steps:
+      - name: Récupération du code
+        uses: actions/checkout@v4
+
+      - name: Exécuter le vérificateur de style
+        run: check.sh $(pwd) $(pwd)
+
+      - name: Afficher les erreurs de style
+        if: failure()
+        run: |
+          while IFS= read -r line; do
+            echo "::error file=$(echo $line | cut -d ':' -f1),line=$(echo $line | cut -d ':' -f2),title=Erreur de style::$(echo $line | cut -d ':' -f3-)"
+          done < coding-style-reports.log
+
+      - name: Échec si erreurs de style
+        if: failure()
+        run: exit 1
