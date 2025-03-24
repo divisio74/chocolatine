@@ -8,17 +8,15 @@ on:
     branches-ignore:
       - 'ga-ignore-*'
 
-
 env:
   MIRROR_URL: "git@github.com:EpitechPGEPromo2029/B-DOP-200-LYN-2-1-chocolatine-pierre.baud.git"
   EXECUTABLES: "bin/my_program,bin/another_executable"
-
 
 jobs:
   check_conditions:
     runs-on: ubuntu-latest
     steps:
-      - name: Vérifier si le repository est un miroir
+      - name: Vérif_mirror
         run: |
           if [ "$GITHUB_REPOSITORY" = "$MIRROR_URL" ]; then
             echo "Ce repository est un miroir, arrêt du workflow."
@@ -26,24 +24,84 @@ jobs:
           fi
 
   check_coding_style:
-    name: Vérification du style de code
+    name: Vérif_coding_style
     runs-on: ubuntu-latest
     container: ghcr.io/epitech/coding-style-checker:latest
 
     steps:
-      - name: Récupération du code
+      - name: receive_code
         uses: actions/checkout@v4
 
-      - name: Exécuter le vérificateur de style
+      - name: Exec_coding_style
         run: check.sh $(pwd) $(pwd)
 
-      - name: Afficher les erreurs de style
+      - name: print_cs_error
         if: failure()
         run: |
           while IFS= read -r line; do
             echo "::error file=$(echo $line | cut -d ':' -f1),line=$(echo $line | cut -d ':' -f2),title=Erreur de style::$(echo $line | cut -d ':' -f3-)"
           done < coding-style-reports.log
 
-      - name: Échec si erreurs de style
+      - name: echec_coding_style
         if: failure()
         run: exit 1
+
+  check_program_compilation:
+    name: gcc_verif
+    runs-on: ubuntu-latest
+    needs: check_coding_style
+    container: epitechcontent/epitest-docker
+
+    steps:
+      - name: receive_code
+        uses: actions/checkout@v4
+
+      - name: make_step
+        run: timeout 120 make
+        continue-on-error: false
+
+      - name: makeclean_step
+        run: make clean
+
+      - name: exec_verif
+        run: |
+          IFS=',' read -ra FILES <<< "$EXECUTABLES"
+          for file in "${FILES[@]}"; do
+            if [ ! -x "$file" ]; then
+              echo "::error file=$file,title=Exécutable manquant::L'exécutable $file est introuvable ou non exécutable."
+              exit 1
+            fi
+          done
+
+  run_tests:
+    name: Exec_test
+    runs-on: ubuntu-latest
+    needs: check_program_compilation
+    container: epitechcontent/epitest-docker
+
+    steps:
+      - name: receive_code
+        uses: actions/checkout@v4
+
+      - name: start_test
+        run: timeout 120 make tests_run
+        continue-on-error: false
+
+  push_to_mirror:
+    name: push_to_mirror
+    runs-on: ubuntu-latest
+    needs: run_tests
+    if: github.event_name == 'push'
+
+    steps:
+      - name: receive_code
+        uses: actions/checkout@v4
+
+      - name: Mirroring
+        uses: pixta-dev/repository-mirroring-action@v1
+        with:
+          target_repo_url: ${{ env.MIRROR_URL }}
+          ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+
+
+
