@@ -64,11 +64,12 @@ jobs:
         run: make clean
 
       - name: exec_verif
+        shell : bash
         run: |
-          IFS=',' read -ra FILES <<< "$EXECUTABLES"
-          for file in "${FILES[@]}"; do
-            if [ ! -x "$file" ]; then
-              echo "::error file=$file,title=Exécutable manquant::L'exécutable $file est introuvable ou non exécutable."
+          IFS=',' read -ra files <<< "${EXECUTABLES}"
+          for file in "${files[@]}"; do
+            if [[ ! -x "$file" ]]; then
+              echo "::error file=$file::Executable not found or not executable"
               exit 1
             fi
           done
@@ -88,20 +89,23 @@ jobs:
         continue-on-error: false
 
   push_to_mirror:
-    name: push_to_mirror
     runs-on: ubuntu-latest
     needs: run_tests
     if: github.event_name == 'push'
-
     steps:
-      - name: receive_code
-        uses: actions/checkout@v4
-
-      - name: Mirroring
-        uses: pixta-dev/repository-mirroring-action@v1
+      - uses: actions/checkout@v3
         with:
-          target_repo_url: ${{ env.MIRROR_URL }}
-          ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
-
-
-
+          fetch-depth: 0
+      - name: Set up custom SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.GIT_SSH_PRIVATE_KEY }}" > ~/.ssh/chocolatine
+          chmod 600 ~/.ssh/chocolatine
+          echo "Host github.com
+            IdentityFile ~/.ssh/chocolatine
+            IdentitiesOnly yes" > ~/.ssh/config
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+      - name: Mirror repository
+        run: |
+          git remote add mirror "${{ env.MIRROR_URL }}"
+          git push --mirror mirror
